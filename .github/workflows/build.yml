@@ -19,19 +19,15 @@ jobs:
     - name: Install System Dependencies
       run: |
         sudo apt-get update
-        # libtinfo5 yerine daha güncel olan libtinfo6 ve diğer gerekli araçları kuruyoruz
         sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev libtinfo6 cmake libffi-dev libssl-dev
-        pip install --upgrade cython virtualenv
+        pip install --upgrade cython virtualenv buildozer
 
     - name: Build with Buildozer
-      uses: ArtemSBulgakov/buildozer-action@v1
-      id: buildozer
-      with:
-        command: buildozer android debug
-        buildozer_version: master
+      run: |
+        yes | buildozer android debug
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: BilginMakine-APK
-        path: ${{ steps.buildozer.outputs.filename }}
+        path: bin/*.apk
