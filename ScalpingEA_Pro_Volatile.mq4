@@ -3,7 +3,7 @@
 //|  Sinyal gelince anında N işlem açar | MACD+RSI+BB               |
 //+------------------------------------------------------------------+
 #property strict
-#property version "7.1"
+#property version "7.2"
 
 // --- İndikatörler
 input int    RSI_Period   = 14;
@@ -30,6 +30,7 @@ input double RiskPct      = 0.5;
 input int    MaxSpread    = 50;
 input int    SessStart    = 7;
 input int    SessEnd      = 22;
+input double ProfitTarget = 5.0;    // $5 kâra ulaşınca dur
 input int    Magic        = 202407;
 
 datetime g_bar;
@@ -43,6 +44,16 @@ int OnInit() {
 }
 
 void OnTick() {
+   // Kâr hedefi kontrolü
+   if(ToplamKar() >= ProfitTarget) {
+      HepsiniKapat(OP_BUY);
+      HepsiniKapat(OP_SELL);
+      LimitleriIptal(OP_BUY);
+      LimitleriIptal(OP_SELL);
+      Print("✅ HEDEF ULAŞILDI! Kâr: $", DoubleToStr(ToplamKar(),2), " — EA durdu.");
+      return;
+   }
+
    // TP/SL kontrolü her tik'te çalışır
    GridKontrol(OP_BUY);
    GridKontrol(OP_SELL);
@@ -195,4 +206,14 @@ int PozSay(int tip) {
 bool Seans() {
    int s=TimeHour(TimeCurrent());
    return (s>=SessStart && s<SessEnd);
+}
+
+double ToplamKar() {
+   double kar = 0;
+   for(int i=0; i<OrdersTotal(); i++) {
+      if(!OrderSelect(i,SELECT_BY_POS,MODE_TRADES)) continue;
+      if(OrderMagicNumber()==Magic && OrderSymbol()==Symbol())
+         kar += OrderProfit() + OrderSwap() - OrderCommission();
+   }
+   return kar;
 }
