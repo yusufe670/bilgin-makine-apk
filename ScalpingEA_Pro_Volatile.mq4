@@ -45,16 +45,21 @@ void OnTick() {
    double c1   = Close[1];
    double bu   = iBands(NULL,0,BB_Period,BB_Dev,0,PRICE_CLOSE,MODE_UPPER,1);
    double bl   = iBands(NULL,0,BB_Period,BB_Dev,0,PRICE_CLOSE,MODE_LOWER,1);
+   double bm   = iBands(NULL,0,BB_Period,BB_Dev,0,PRICE_CLOSE,MODE_MAIN, 1);
 
    int buy_cnt  = PozSay(OP_BUY);
    int sell_cnt = PozSay(OP_SELL);
 
-   // BUY: Fiyat alt BB'ye değdi + RSI aşırı satım
+   // BUY: BB alt bandı yakını VEYA RSI düşük
+   // SELL: BB üst bandı yakını VEYA RSI yüksek
+   bool buy_bb  = (c1 <= bl + g_atr * 0.3);   // Alt BB'ye yakın
+   bool sell_bb = (c1 >= bu - g_atr * 0.3);   // Üst BB'ye yakın
+   bool buy_rsi = (rsi <= RSI_OS);
+   bool sell_rsi= (rsi >= RSI_OB);
+
    if(buy_cnt + sell_cnt < MaxPos) {
-      if(c1 <= bl && rsi <= RSI_OS)
-         Ac(OP_BUY);
-      if(c1 >= bu && rsi >= RSI_OB)
-         Ac(OP_SELL);
+      if(buy_bb || buy_rsi)   Ac(OP_BUY);
+      if(sell_bb || sell_rsi) Ac(OP_SELL);
    }
 
    if(UseTrailing) Trail();
