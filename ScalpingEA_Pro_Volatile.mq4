@@ -3,23 +3,23 @@
 //|  Fiyat aleyhine gidince üst üste açar, geri dönünce hepsi kapanır|
 //+------------------------------------------------------------------+
 #property strict
-#property version "6.00"
+#property version "6.1"
 
 // --- Giriş Sinyali
 input int    RSI_Period  = 14;
-input double RSI_OS      = 40.0;   // BUY başlangıç eşiği
-input double RSI_OB      = 60.0;   // SELL başlangıç eşiği
+input double RSI_OS      = 50.0;   // BUY başlangıç eşiği
+input double RSI_OB      = 50.0;   // SELL başlangıç eşiği
 input int    BB_Period   = 20;
 input double BB_Dev      = 2.0;
 
 // --- Grid Ayarları
-input double GridStep    = 10.0;   // Her X pip'te yeni işlem aç
-input int    MaxGrid     = 10;     // Max kaç işlem üst üste açılır
-input double GridTP      = 15.0;   // Ortalamadan kaç pip kârda kapat
-input double GridSL      = 100.0;  // Toplam zarar limiti (pip) — güvenlik
+input double GridStep    = 5.0;    // Her 5 pip'te yeni işlem aç
+input int    MaxGrid     = 15;     // Max 15 işlem üst üste
+input double GridTP      = 10.0;  // 10 pip kârda kapat
+input double GridSL      = 150.0; // Güvenlik stop
 
 // --- Lot
-input double Lot         = 0.01;
+input double Lot         = 0.50;
 input bool   AutoLot     = false;
 input double RiskPct     = 0.5;
 
