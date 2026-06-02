@@ -18,7 +18,7 @@ input double   Trail_Mult     = 0.7;
 input double   Lot            = 0.01;
 input bool     AutoLot        = false;
 input double   RiskPct        = 1.0;
-input int      MaxPos         = 2;      // Aynı anda 2 işlem
+input int      MaxPos         = 5;      // Aynı anda 5 işlem (max 10 yapılabilir)
 input int      MaxSpread      = 40;
 input int      SessStart      = 7;
 input int      SessEnd        = 22;
@@ -51,9 +51,9 @@ void OnTick() {
 
    // BUY: Fiyat alt BB'ye değdi + RSI aşırı satım
    if(buy_cnt + sell_cnt < MaxPos) {
-      if(c1 <= bl && rsi <= RSI_OS && buy_cnt == 0)
+      if(c1 <= bl && rsi <= RSI_OS)
          Ac(OP_BUY);
-      if(c1 >= bu && rsi >= RSI_OB && sell_cnt == 0)
+      if(c1 >= bu && rsi >= RSI_OB)
          Ac(OP_SELL);
    }
 
