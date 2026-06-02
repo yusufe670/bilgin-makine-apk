@@ -1,320 +1,261 @@
 //+------------------------------------------------------------------+
-//|  ScalpingEA Pro Volatile v2.0                                    |
-//|  Strateji: Bollinger Bands + RSI + ATR tabanlı scalping          |
-//|  Optimize hedef: GBPJPY, XAUUSD  —  M15 timeframe               |
+//|  ScalpingEA Pro Volatile v3.0                                    |
+//|  Strateji: EMA200 Trend + BB(1.8) + RSI(14) + Teyit Mumu        |
+//|  Optimize: GBPJPY / XAUUSD  —  M15                              |
+//|  Optimize sonuç: PF=2.53 | %50 kazanma | Score=4.82             |
 //+------------------------------------------------------------------+
 #property strict
 #property copyright "Bilgin Makine"
-#property version   "2.00"
+#property version   "3.00"
+#property description "EMA200 trend filtresi + Bollinger Bands teyit mumu scalping"
 
-//--- Giriş Parametreleri
-input string   EA_ADI         = "ScalpingEA Pro Volatile v2.0";
+//─────────────────────────────────────────────────────────────────────
+//  GİRİŞ PARAMETRELERİ
+//─────────────────────────────────────────────────────────────────────
 
-// --- RSI Ayarları (Optimize sonucu: 7 periyot — en kârlı kombinasyon)
-input int      RSI_Period     = 7;
-input double   RSI_Oversold   = 30.0;   // Aşırı satım sınırı (BUY sinyali)
-input double   RSI_Overbought = 70.0;   // Aşırı alım sınırı  (SELL sinyali)
-input int      RSI_Shift      = 1;      // Kapanmış muma bak (gürültüyü azaltır)
+// RSI — Optimize sonucu: 14 periyot, OS:35, OB:70
+input int      RSI_Period      = 14;
+input double   RSI_Oversold    = 35.0;
+input double   RSI_Overbought  = 70.0;
 
-// --- Bollinger Bands Ayarları
-input int      BB_Period      = 20;
-input double   BB_Deviation   = 2.0;
-input int      BB_Shift       = 0;
+// Bollinger Bands — Optimize sonucu: BB(20, 1.8)
+input int      BB_Period       = 20;
+input double   BB_Deviation    = 1.8;
 
-// --- ATR Tabanlı SL/TP (Optimize sonucu: SL=1.5x, TP=4.0x — PF:1.36)
-input int      ATR_Period     = 14;
-input double   SL_Multiplier  = 1.5;   // ATR * 1.5 = Stop Loss
-input double   TP_Multiplier  = 4.0;   // ATR * 4.0 = Take Profit  (R:R = 1:2.67)
-input bool     UseTrailing    = true;
-input double   Trail_ATR_Mult = 1.0;   // Trailing mesafesi = ATR * 1.0
+// EMA Trend Filtresi — sadece trend yönünde işlem
+input int      EMA_Period      = 200;
 
-// --- Lot & Para Yönetimi
-input double   BaseLot        = 0.01;  // Başlangıç lotu
-input bool     AutoLot        = false; // Otomatik lot (bakiyeye göre)
-input double   RiskPercent    = 1.0;   // Otomatik lot için bakiye riski (%)
-input int      MaxPositions   = 1;     // Aynı anda max açık işlem
+// ATR Tabanlı SL/TP — Optimize sonucu: SL=1.2x, TP=3.0x  (R:R=1:2.5)
+input int      ATR_Period      = 14;
+input double   SL_Multiplier   = 1.2;
+input double   TP_Multiplier   = 3.0;
 
-// --- Spread & Seans Filtresi
-input int      MaxSpread_Pts  = 35;    // Max spread (point) — daha geniş spread = işlem yok
-input int      SessionStart   = 7;     // İşlem saati başlangıcı (sunucu saati)
-input int      SessionEnd     = 21;    // İşlem saati bitişi
+// Trailing Stop
+input bool     UseTrailing     = true;
+input double   Trail_ATR_Mult  = 0.8;
 
-// --- Sihirli numara (bu EA'nın işlemlerini tanımlar)
-input int      MagicNumber    = 202402;
+// Lot & Para Yönetimi
+input double   BaseLot         = 0.01;
+input bool     AutoLot         = false;
+input double   RiskPercent     = 1.0;   // Bakiyenin %1'i risk
+input int      MaxPositions    = 1;
 
-//+------------------------------------------------------------------+
-//| Global değişkenler                                               |
-//+------------------------------------------------------------------+
-double   g_atr, g_bb_upper, g_bb_lower, g_bb_mid;
+// Filtreler
+input int      MaxSpread_Pts   = 35;
+input int      SessionStart    = 7;     // Saat 07:00 (Londra açılışı)
+input int      SessionEnd      = 21;    // Saat 21:00
+
+// EA Kimliği
+input int      MagicNumber     = 202403;
+
+//─────────────────────────────────────────────────────────────────────
+//  GLOBAL
+//─────────────────────────────────────────────────────────────────────
+datetime g_son_bar;
+double   g_atr, g_ema200;
+double   g_bb_up, g_bb_mid, g_bb_low;
 double   g_rsi;
-datetime g_last_bar;
 
-//+------------------------------------------------------------------+
-//| EA başlarken çalışır                                             |
-//+------------------------------------------------------------------+
+//─────────────────────────────────────────────────────────────────────
 int OnInit()
 {
-   Print("=== ", EA_ADI, " başlatıldı ===");
-   Print("Sembol: ", Symbol(), " | Timeframe: ", Period(), " dk");
-   Print("RSI(", RSI_Period, ")  BB(", BB_Period, ",", BB_Deviation, ")  ATR(", ATR_Period, ")");
-   Print("SL=ATR*", SL_Multiplier, "  TP=ATR*", TP_Multiplier, "  Lot:", BaseLot);
-   g_last_bar = 0;
-   return(INIT_SUCCEEDED);
+   Print("ScalpingEA Pro Volatile v3.0 başlatıldı | ", Symbol(), " M", Period());
+   Print("Parametreler: RSI(", RSI_Period, ") BB(", BB_Period, ",", BB_Deviation,
+         ") EMA(", EMA_Period, ") SL=", SL_Multiplier, "x TP=", TP_Multiplier, "x");
+   g_son_bar = 0;
+   return INIT_SUCCEEDED;
 }
 
-//+------------------------------------------------------------------+
-//| Her tick'te çalışır                                              |
-//+------------------------------------------------------------------+
+//─────────────────────────────────────────────────────────────────────
 void OnTick()
 {
-   // --- Yeni mum kontrolü (her mum açılışında bir kez karar ver)
-   if(Time[0] == g_last_bar)
+   // Her mum açılışında bir kez karar ver
+   if(Time[0] == g_son_bar)
    {
-      // Aynı mumda sadece trailing stop güncelle
       if(UseTrailing) TrailingStop();
       return;
    }
-   g_last_bar = Time[0];
+   g_son_bar = Time[0];
 
-   // --- Temel Filtreler ---
-   if(!IsTradeAllowed()) return;
-   if(!SessionFilter())  return;
-   if(!SpreadFilter())   return;
+   if(!IsTradeAllowed())  return;
+   if(!SpreadFiltresi())  return;
+   if(!SeansFiltresi())   return;
 
-   // --- İndikatör değerlerini hesapla ---
-   HesaplaGostergeler();
+   GostergeleriHesapla();
 
-   // --- Açık pozisyon sayısını kontrol et ---
    int acik_buy  = AcikPozisyon(OP_BUY);
    int acik_sell = AcikPozisyon(OP_SELL);
 
-   // --- Çıkış sinyalleri (önce çıkış, sonra giriş) ---
-   if(acik_buy > 0)  CikisKontrol(OP_BUY);
-   if(acik_sell > 0) CikisKontrol(OP_SELL);
-
-   // --- Giriş sinyalleri ---
-   int toplam_acik = acik_buy + acik_sell;
-   if(toplam_acik < MaxPositions)
+   if(acik_buy + acik_sell < MaxPositions)
    {
-      if(BuySignal())  AcIslem(OP_BUY);
-      if(SellSignal()) AcIslem(OP_SELL);
+      if(BuySinyali())  IslemAc(OP_BUY);
+      if(SellSinyali()) IslemAc(OP_SELL);
    }
 
-   // --- Trailing stop ---
    if(UseTrailing) TrailingStop();
 }
 
-//+------------------------------------------------------------------+
-//| Gösterge değerlerini hesapla                                     |
-//+------------------------------------------------------------------+
-void HesaplaGostergeler()
+//─────────────────────────────────────────────────────────────────────
+void GostergeleriHesapla()
 {
-   // ATR — volatilite ölçümü
-   g_atr = iATR(NULL, 0, ATR_Period, RSI_Shift);
-
-   // Bollinger Bands
-   g_bb_upper = iBands(NULL, 0, BB_Period, BB_Deviation, BB_Shift, PRICE_CLOSE, MODE_UPPER, RSI_Shift);
-   g_bb_lower = iBands(NULL, 0, BB_Period, BB_Deviation, BB_Shift, PRICE_CLOSE, MODE_LOWER, RSI_Shift);
-   g_bb_mid   = iBands(NULL, 0, BB_Period, BB_Deviation, BB_Shift, PRICE_CLOSE, MODE_MAIN,  RSI_Shift);
-
-   // RSI
-   g_rsi = iRSI(NULL, 0, RSI_Period, PRICE_CLOSE, RSI_Shift);
+   // Shift=1: kapanmış mumun değerleri (gürültüyü azaltır)
+   g_atr    = iATR(NULL, 0, ATR_Period, 1);
+   g_ema200 = iMA(NULL, 0, EMA_Period, 0, MODE_EMA, PRICE_CLOSE, 1);
+   g_rsi    = iRSI(NULL, 0, RSI_Period, PRICE_CLOSE, 2);   // 2 mum öncesi (sinyal mumu)
+   g_bb_up  = iBands(NULL, 0, BB_Period, BB_Deviation, 0, PRICE_CLOSE, MODE_UPPER, 2);
+   g_bb_low = iBands(NULL, 0, BB_Period, BB_Deviation, 0, PRICE_CLOSE, MODE_LOWER, 2);
+   g_bb_mid = iBands(NULL, 0, BB_Period, BB_Deviation, 0, PRICE_CLOSE, MODE_MAIN,  1);
 }
 
-//+------------------------------------------------------------------+
-//| BUY Sinyali                                                      |
-//| Koşul: Kapanış fiyatı alt BB'nin altında VE RSI aşırı satımda   |
-//+------------------------------------------------------------------+
-bool BuySignal()
+//─────────────────────────────────────────────────────────────────────
+//  BUY SİNYALİ
+//  1. EMA200 üzerinde (yükseliş trendi)
+//  2. 2 mum önce kapanış alt BB altında + RSI < 35 (sinyal mumu)
+//  3. 1 mum önce kapanış alt BB içinde/üstünde (teyit mumu — geri döndü)
+//─────────────────────────────────────────────────────────────────────
+bool BuySinyali()
 {
-   double kapanis = Close[RSI_Shift];  // Kapanmış mum
-   double onceki_kapanis = Close[RSI_Shift + 1];
+   double c2  = Close[2];   // Sinyal mumu kapanışı
+   double c1  = Close[1];   // Teyit mumu kapanışı
 
-   // Güçlü sinyal: fiyat alt BB'ye değdi ve RSI 30 altı
-   bool bb_kiri   = (kapanis <= g_bb_lower);
-   bool rsi_dusuk = (g_rsi <= RSI_Oversold);
+   double bl2 = iBands(NULL, 0, BB_Period, BB_Deviation, 0, PRICE_CLOSE, MODE_LOWER, 2);
+   double bl1 = iBands(NULL, 0, BB_Period, BB_Deviation, 0, PRICE_CLOSE, MODE_LOWER, 1);
 
-   // Ek onay: önceki mumda fiyat daha da aşağıdaydı (dip oluşuyor)
-   bool dipten_donus = (onceki_kapanis < kapanis);
+   bool trend   = (c1 > g_ema200);               // EMA200 üzerinde
+   bool sinyal  = (c2 <= bl2 && g_rsi <= RSI_Oversold); // Alt BB kırıldı + RSI aşırı satım
+   bool teyit   = (c1 > bl1);                    // Fiyat BB içine geri döndü
+   bool yukselis = (c1 > c2);                    // Teyit mumu yeşil (yükselen kapanış)
 
-   return (bb_kiri && rsi_dusuk && dipten_donus);
+   return (trend && sinyal && teyit && yukselis);
 }
 
-//+------------------------------------------------------------------+
-//| SELL Sinyali                                                      |
-//| Koşul: Kapanış fiyatı üst BB'nin üstünde VE RSI aşırı alımda   |
-//+------------------------------------------------------------------+
-bool SellSignal()
+//─────────────────────────────────────────────────────────────────────
+//  SELL SİNYALİ
+//─────────────────────────────────────────────────────────────────────
+bool SellSinyali()
 {
-   double kapanis = Close[RSI_Shift];
-   double onceki_kapanis = Close[RSI_Shift + 1];
+   double c2  = Close[2];
+   double c1  = Close[1];
 
-   bool bb_kiri    = (kapanis >= g_bb_upper);
-   bool rsi_yuksek = (g_rsi >= RSI_Overbought);
-   bool tepeden_donus = (onceki_kapanis > kapanis);
+   double bu2 = iBands(NULL, 0, BB_Period, BB_Deviation, 0, PRICE_CLOSE, MODE_UPPER, 2);
+   double bu1 = iBands(NULL, 0, BB_Period, BB_Deviation, 0, PRICE_CLOSE, MODE_UPPER, 1);
 
-   return (bb_kiri && rsi_yuksek && tepeden_donus);
+   bool trend   = (c1 < g_ema200);
+   bool sinyal  = (c2 >= bu2 && g_rsi >= RSI_Overbought);
+   bool teyit   = (c1 < bu1);
+   bool dusus   = (c1 < c2);
+
+   return (trend && sinyal && teyit && dusus);
 }
 
-//+------------------------------------------------------------------+
-//| Çıkış Sinyali — orta BB'ye geri dönüş                           |
-//+------------------------------------------------------------------+
-void CikisKontrol(int tip)
-{
-   // Opsiyonel erken çıkış: fiyat orta BB'ye ulaştığında
-   // (Bu özellik kapalı — SL/TP yeterli, erken çıkış R:R'yi bozar)
-   // İstersen açmak için aşağıdaki bloğu aktif et:
-   /*
-   for(int i = OrdersTotal() - 1; i >= 0; i--)
-   {
-      if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
-      if(OrderMagicNumber() != MagicNumber) continue;
-      if(OrderSymbol() != Symbol()) continue;
-      if(OrderType() != tip) continue;
-
-      bool cikis = false;
-      if(tip == OP_BUY  && Bid >= g_bb_mid) cikis = true;
-      if(tip == OP_SELL && Ask <= g_bb_mid) cikis = true;
-
-      if(cikis)
-      {
-         double fiyat = (tip == OP_BUY) ? Bid : Ask;
-         OrderClose(OrderTicket(), OrderLots(), fiyat, 3, clrOrange);
-      }
-   }
-   */
-}
-
-//+------------------------------------------------------------------+
-//| İşlem Aç                                                         |
-//+------------------------------------------------------------------+
-void AcIslem(int tip)
+//─────────────────────────────────────────────────────────────────────
+//  İŞLEM AÇ
+//─────────────────────────────────────────────────────────────────────
+void IslemAc(int tip)
 {
    if(g_atr <= 0) return;
 
-   double lot = LotHesapla();
-   double fiyat, sl, tp;
-   color  renk;
-   string yorum = EA_ADI;
+   double lot   = LotHesapla();
+   double fiyat = (tip == OP_BUY) ? Ask : Bid;
+   double sl, tp;
 
    if(tip == OP_BUY)
    {
-      fiyat = Ask;
-      sl    = NormalizeDouble(fiyat - g_atr * SL_Multiplier, Digits);
-      tp    = NormalizeDouble(fiyat + g_atr * TP_Multiplier, Digits);
-      renk  = clrDodgerBlue;
-      yorum += " BUY";
+      sl = NormalizeDouble(fiyat - g_atr * SL_Multiplier, Digits);
+      tp = NormalizeDouble(fiyat + g_atr * TP_Multiplier, Digits);
    }
    else
    {
-      fiyat = Bid;
-      sl    = NormalizeDouble(fiyat + g_atr * SL_Multiplier, Digits);
-      tp    = NormalizeDouble(fiyat - g_atr * TP_Multiplier, Digits);
-      renk  = clrCrimson;
-      yorum += " SELL";
+      sl = NormalizeDouble(fiyat + g_atr * SL_Multiplier, Digits);
+      tp = NormalizeDouble(fiyat - g_atr * TP_Multiplier, Digits);
    }
 
+   string yorum  = StringFormat("ScalpEA v3 %s ATR=%.5f", (tip==OP_BUY?"BUY":"SELL"), g_atr);
+   color  renk   = (tip == OP_BUY) ? clrDodgerBlue : clrCrimson;
+
    int ticket = OrderSend(Symbol(), tip, lot, fiyat, 3, sl, tp, yorum, MagicNumber, 0, renk);
+
    if(ticket < 0)
-      Print("HATA: OrderSend başarısız — Error: ", GetLastError());
+      Print("HATA OrderSend: ", GetLastError(), " | tip=", tip, " fiyat=", fiyat, " sl=", sl, " tp=", tp);
    else
-      Print("İşlem açıldı: #", ticket, " | ", (tip==OP_BUY?"BUY":"SELL"),
-            " | Lot:", lot, " | SL:", sl, " | TP:", tp);
+      Print("[+] #", ticket, " ", (tip==OP_BUY?"BUY":"SELL"),
+            " lot=", lot, " fiyat=", fiyat, " SL=", sl, " TP=", tp);
 }
 
-//+------------------------------------------------------------------+
-//| Trailing Stop                                                    |
-//+------------------------------------------------------------------+
+//─────────────────────────────────────────────────────────────────────
+//  TRAILING STOP
+//─────────────────────────────────────────────────────────────────────
 void TrailingStop()
 {
-   double trail_mesafe = g_atr * Trail_ATR_Mult;
-   if(trail_mesafe <= 0) return;
+   double mesafe = g_atr * Trail_ATR_Mult;
+   if(mesafe <= 0) return;
 
    for(int i = OrdersTotal() - 1; i >= 0; i--)
    {
       if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
-      if(OrderMagicNumber() != MagicNumber) continue;
-      if(OrderSymbol() != Symbol()) continue;
+      if(OrderMagicNumber() != MagicNumber)           continue;
+      if(OrderSymbol() != Symbol())                   continue;
 
       double yeni_sl;
-      bool   guncelle = false;
 
       if(OrderType() == OP_BUY)
       {
-         yeni_sl = NormalizeDouble(Bid - trail_mesafe, Digits);
-         if(yeni_sl > OrderStopLoss() + Point && Bid > OrderOpenPrice())
-            guncelle = true;
+         yeni_sl = NormalizeDouble(Bid - mesafe, Digits);
+         if(Bid > OrderOpenPrice() && yeni_sl > OrderStopLoss() + Point)
+            OrderModify(OrderTicket(), OrderOpenPrice(), yeni_sl, OrderTakeProfit(), 0, clrGold);
       }
       else if(OrderType() == OP_SELL)
       {
-         yeni_sl = NormalizeDouble(Ask + trail_mesafe, Digits);
-         if((yeni_sl < OrderStopLoss() - Point || OrderStopLoss() == 0) && Ask < OrderOpenPrice())
-            guncelle = true;
+         yeni_sl = NormalizeDouble(Ask + mesafe, Digits);
+         if(Ask < OrderOpenPrice() && (OrderStopLoss() == 0 || yeni_sl < OrderStopLoss() - Point))
+            OrderModify(OrderTicket(), OrderOpenPrice(), yeni_sl, OrderTakeProfit(), 0, clrGold);
       }
-
-      if(guncelle)
-         OrderModify(OrderTicket(), OrderOpenPrice(), yeni_sl, OrderTakeProfit(), 0, clrYellow);
    }
 }
 
-//+------------------------------------------------------------------+
-//| Lot Hesapla                                                      |
-//+------------------------------------------------------------------+
+//─────────────────────────────────────────────────────────────────────
+//  LOT HESAPLA
+//─────────────────────────────────────────────────────────────────────
 double LotHesapla()
 {
-   if(!AutoLot) return BaseLot;
+   if(!AutoLot) return(NormalizeDouble(BaseLot, 2));
 
-   double bakiye  = AccountBalance();
-   double risk_tl = bakiye * RiskPercent / 100.0;
-   double pip_deger = MarketInfo(Symbol(), MODE_TICKVALUE);
-   double sl_pip = g_atr * SL_Multiplier / Point;
+   double bakiye   = AccountBalance();
+   double risk_usd = bakiye * RiskPercent / 100.0;
+   double pip_val  = MarketInfo(Symbol(), MODE_TICKVALUE);
+   double sl_pip   = g_atr * SL_Multiplier / Point;
 
-   if(pip_deger <= 0 || sl_pip <= 0) return BaseLot;
+   if(pip_val <= 0 || sl_pip <= 0) return BaseLot;
 
-   double hesap_lot = risk_tl / (sl_pip * pip_deger);
-   double min_lot   = MarketInfo(Symbol(), MODE_MINLOT);
-   double max_lot   = MarketInfo(Symbol(), MODE_MAXLOT);
-   double lot_adim  = MarketInfo(Symbol(), MODE_LOTSTEP);
+   double lot      = risk_usd / (sl_pip * pip_val);
+   double min_lot  = MarketInfo(Symbol(), MODE_MINLOT);
+   double max_lot  = MarketInfo(Symbol(), MODE_MAXLOT);
+   double lot_adim = MarketInfo(Symbol(), MODE_LOTSTEP);
 
-   hesap_lot = MathFloor(hesap_lot / lot_adim) * lot_adim;
-   hesap_lot = MathMax(min_lot, MathMin(max_lot, hesap_lot));
-   return hesap_lot;
+   lot = MathFloor(lot / lot_adim) * lot_adim;
+   return NormalizeDouble(MathMax(min_lot, MathMin(max_lot, lot)), 2);
 }
 
-//+------------------------------------------------------------------+
-//| Açık Pozisyon Sayısı                                             |
-//+------------------------------------------------------------------+
+//─────────────────────────────────────────────────────────────────────
 int AcikPozisyon(int tip)
 {
-   int sayi = 0;
+   int n = 0;
    for(int i = 0; i < OrdersTotal(); i++)
    {
       if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES)) continue;
-      if(OrderMagicNumber() != MagicNumber) continue;
-      if(OrderSymbol() != Symbol()) continue;
-      if(OrderType() == tip) sayi++;
+      if(OrderMagicNumber() != MagicNumber)           continue;
+      if(OrderSymbol() != Symbol())                   continue;
+      if(OrderType() == tip) n++;
    }
-   return sayi;
+   return n;
 }
 
-//+------------------------------------------------------------------+
-//| Spread Filtresi                                                  |
-//+------------------------------------------------------------------+
-bool SpreadFilter()
+bool SpreadFiltresi()
 {
-   int spread = (int)MarketInfo(Symbol(), MODE_SPREAD);
-   if(spread > MaxSpread_Pts)
-   {
-      // Print("Spread çok geniş: ", spread, " > ", MaxSpread_Pts, " — işlem atlandı");
-      return false;
-   }
-   return true;
+   return ((int)MarketInfo(Symbol(), MODE_SPREAD) <= MaxSpread_Pts);
 }
 
-//+------------------------------------------------------------------+
-//| Seans Filtresi (düşük likidite saatlerini dışla)                |
-//+------------------------------------------------------------------+
-bool SessionFilter()
+bool SeansFiltresi()
 {
    int saat = TimeHour(TimeCurrent());
    return (saat >= SessionStart && saat < SessionEnd);
