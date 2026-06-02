@@ -3,7 +3,7 @@
 //|  Aynı anda BUY + SELL | Hızlı TP | Sürekli sinyal | M5         |
 //+------------------------------------------------------------------+
 #property strict
-#property version "5.00"
+#property version "5.1"
 
 input int    RSI_Period  = 14;
 input double RSI_OS      = 45.0;   // BUY eşiği
@@ -51,11 +51,9 @@ void OnTick() {
    double bm  = iBands(NULL,0,BB_Period,BB_Dev,0,PRICE_CLOSE,MODE_MAIN, 1);
    double bl  = iBands(NULL,0,BB_Period,BB_Dev,0,PRICE_CLOSE,MODE_LOWER,1);
 
-   // BUY sinyali: RSI düşük VEYA fiyat orta BB altında
-   bool buy_sig  = (rsi <= RSI_OS) || (c1 < bm);
-
-   // SELL sinyali: RSI yüksek VEYA fiyat orta BB üstünde
-   bool sell_sig = (rsi >= RSI_OB) || (c1 > bm);
+   // TERS STRATEJİ: BB ortası üstünde = BUY, altında = SELL
+   bool buy_sig  = (rsi >= RSI_OB) || (c1 > bm);
+   bool sell_sig = (rsi <= RSI_OS) || (c1 < bm);
 
    if(buy_sig  && PozSay(OP_BUY)  < MaxBuy)  Ac(OP_BUY);
    if(sell_sig && PozSay(OP_SELL) < MaxSell) Ac(OP_SELL);
