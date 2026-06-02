@@ -3,7 +3,7 @@
 //|  Sinyal gelince anında N işlem açar | MACD+RSI+BB               |
 //+------------------------------------------------------------------+
 #property strict
-#property version "7.00"
+#property version "7.1"
 
 // --- İndikatörler
 input int    RSI_Period   = 14;
@@ -79,13 +79,13 @@ void OnTick() {
    bool sell_sig  = (sell_bb || sell_rsi) && sell_macd;
 
    // --- Burst Açış: Sinyal gelince BurstCount kadar işlem AÇ ---
-   if(buy_sig && PozSay(OP_BUY) == 0) {
-      Print("[BUY BURST] RSI:", DoubleToStr(rsi,1), " MACD:", DoubleToStr(macd,5));
-      BurstAc(OP_BUY);
-   }
-   if(sell_sig && PozSay(OP_SELL) == 0) {
-      Print("[SELL BURST] RSI:", DoubleToStr(rsi,1), " MACD:", DoubleToStr(macd,5));
+   if(buy_sig && PozSay(OP_SELL) == 0) {
+      Print("[SELL BURST — ters] RSI:", DoubleToStr(rsi,1), " MACD:", DoubleToStr(macd,5));
       BurstAc(OP_SELL);
+   }
+   if(sell_sig && PozSay(OP_BUY) == 0) {
+      Print("[BUY BURST — ters] RSI:", DoubleToStr(rsi,1), " MACD:", DoubleToStr(macd,5));
+      BurstAc(OP_BUY);
    }
 }
 
